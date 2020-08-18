@@ -4,17 +4,17 @@ defmodule Processes do
   @intro "Processes"
 
   koan "You are a process" do
-    assert Process.alive?(self()) == ___
+    assert Process.alive?(self()) == true
   end
 
   koan "You can ask a process to introduce itself" do
     information = Process.info(self())
 
-    assert information[:status] == ___
+    assert information[:status] == :running
   end
 
   koan "Processes are referenced by their process ID (pid)" do
-    assert is_pid(self()) == ___
+    assert is_pid(self()) == true
   end
 
   koan "New processes are spawned functions" do
@@ -24,7 +24,7 @@ defmodule Processes do
         end
       end)
 
-    assert is_pid(value) == ___
+    assert is_pid(value) == true
   end
 
   koan "Processes die when their function exits" do
@@ -36,15 +36,15 @@ defmodule Processes do
     # see if they are still alive!
     :timer.sleep(50)
 
-    assert Process.alive?(fast_process) == ___
-    assert Process.alive?(slow_process) == ___
+    assert Process.alive?(fast_process) == false
+    assert Process.alive?(slow_process) == true
   end
 
   koan "Processes can send and receive messages" do
     send(self(), "hola!")
 
     receive do
-      msg -> assert msg == ___
+      msg -> assert msg == "hola!"
     end
   end
 
@@ -56,15 +56,15 @@ defmodule Processes do
 
     pid = spawn(wait_forever)
 
-    assert Process.alive?(pid) == ___
+    assert Process.alive?(pid) == true
   end
 
   koan "Received messages are queued, first in first out" do
     send(self(), "hola!")
     send(self(), "como se llama?")
 
-    assert_receive ___
-    assert_receive ___
+    assert_receive "hola!"
+    assert_receive "como se llama?"
   end
 
   koan "A common pattern is to include the sender in the message, so that it can reply" do
@@ -77,7 +77,7 @@ defmodule Processes do
     pid = spawn(greeter)
 
     send(pid, {:hello, self()})
-    assert_receive ___
+    assert_receive :how_are_you?
   end
 
   def yelling_echo_loop do
@@ -89,13 +89,18 @@ defmodule Processes do
   end
 
   koan "Use tail recursion to receive multiple messages" do
+    # tail recursion: last statement is recursive call
+    # - recall that it can often be more efficient in languages
+    #   that optimize with tail-call optimization
+    # - this is since the compute does not require the recursive
+    #   calls to return. the compute happens then is passed
     pid = spawn_link(&yelling_echo_loop/0)
 
     send(pid, {self(), "o"})
-    assert_receive ___
+    assert_receive "O"
 
     send(pid, {self(), "hai"})
-    assert_receive ___
+    assert_receive "HAI" 
   end
 
   def state(value) do
@@ -118,15 +123,26 @@ defmodule Processes do
       end)
 
     send(pid, {self(), :get})
-    assert_receive ___
+    assert_receive "foo"
 
     send(pid, {self(), :set, "bar"})
     send(pid, {self(), :get})
-    assert_receive ___
+    assert_receive "bar"
   end
 
   koan "Waiting for a message can get boring" do
     parent = self()
+
+    # You can specify numbers like 1000000 as 1_000_000 for readability 
+    # Also, :after is another param in a keyword list!
+
+    # I have some mixed feelings about these macros; they're nice for sure
+    # after you learn them, but since they look like fns that violate language 
+    # rules at first.
+
+    # There's a lot of rules to remember as result, e.g. where to use ->
+    # I wonder if this :after could be implemented with a case statement
+    # This statement is implemented natively
 
     spawn(fn ->
       receive do
@@ -135,10 +151,11 @@ defmodule Processes do
       end
     end)
 
-    assert_receive ___
+    assert_receive {:waited_too_long, "I am impatient"}
   end
 
   koan "Trapping will allow you to react to someone terminating the process" do
+    # https://hexdocs.pm/elixir/Process.html#exit/2
     parent = self()
 
     pid =
@@ -154,22 +171,29 @@ defmodule Processes do
     receive do
       :ready -> true
     end
+    # why does this not work w/o the child sending and the parent recieving first? 
+    # since recieve blocks! without the blocking on recieve, we'd close the process
+    # before it gets a chance to do anything. Concurrency is hard!
+    # :timer.sleep(50)
+    # :erlang.process_info(self(), :messages) |> IO.inspect
 
     Process.exit(pid, :random_reason)
-
-    assert_receive ___
+    assert_receive {:exited, :random_reason}
   end
 
   koan "Parent processes can trap exits for children they are linked to" do
+    # https://elixir-lang.org/getting-started/processes.html#links
+    # Curious, how does the koans restart the process?
     Process.flag(:trap_exit, true)
     spawn_link(fn -> Process.exit(self(), :normal) end)
 
-    assert_receive {:EXIT, _pid, ___}
+    assert_receive {:EXIT, _pid, :normal}
   end
 
   koan "If you monitor your children, you'll be automatically informed of their departure" do
+    # https://hexdocs.pm/elixir/Process.html#monitor/1
     spawn_monitor(fn -> Process.exit(self(), :normal) end)
 
-    assert_receive {:DOWN, _ref, :process, _pid, ___}
+    assert_receive {:DOWN, _ref, :process, _pid, :normal}
   end
 end
